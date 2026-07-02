@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>虎丘：月下尋音錄 - 自訂音樂與首頁圖床版</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700;900&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Noto Serif TC', serif; background-color: #050505; color: #e5e7eb; overflow: hidden; touch-action: none; margin: 0; padding: 0;}
+    canvas { image-rendering: pixelated; display: block; }
+    .text-glow { text-shadow: 0 0 10px rgba(251, 191, 36, 0.8); }
+    .rhythm-note { position: absolute; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2rem; border: 2px solid; box-shadow: 0 0 15px currentColor; will-change: left; }
+    .scanlines::before { content: " "; display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0; background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06)); z-index: 100; pointer-events: none; }
+    #dialogue-overlay { cursor: pointer; }
+    .custom-scroll::-webkit-scrollbar { width: 8px; }
+    .custom-scroll::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.8); border-radius: 4px; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: rgba(217, 119, 6, 0.5); border-radius: 4px; }
+    .custom-scroll::-webkit-scrollbar-thumb:hover { background: rgba(217, 119, 6, 0.8); }
+  </style>
+</head>
+<body class="w-screen h-screen flex flex-col relative scanlines">
+
+  <!-- ================= 隱藏的音訊上傳器 ================= -->
+  <input type="file" id="bgm-upload" accept="audio/*" class="hidden">
+  <audio id="custom-bgm" loop class="hidden"></audio>
+
+  <!-- ================= 標題畫面 ================= -->
+  <div id="start-screen" class="absolute inset-0 z-[60] flex flex-col items-center justify-center bg-slate-950/90 backdrop-blur-sm transition-opacity duration-1000 bg-cover bg-center">
+    <!-- 防暗色遮罩 -->
+    <div class="absolute inset-0 bg-black/60 pointer-events-none"></div>
+    <div class="text-center px-4 relative z-10">
+      <h2 class="text-amber-500 tracking-widest mb-2 font-bold text-sm md:text-base">晚明小品文 ‧ 沉浸式體驗</h2>
+      <h1 class="text-4xl md:text-7xl font-black text-amber-400 text-glow mb-8">虎丘：月下尋音錄</h1>
+      <div class="text-gray-300 max-w-2xl mx-auto mb-10 leading-relaxed text-sm md:text-base text-left bg-slate-900/80 p-6 rounded-lg border border-amber-900/50 shadow-xl backdrop-blur">
+        <p class="mb-3">「吏吳兩載，登虎丘者六...」</p>
+        <p class="mb-3">我在這繁華的吳縣做知縣已經兩年了。雖然六次登臨虎丘，但每一次都是前呼後擁、官威赫赫。那些代表著權力與俗氣的「皁隸（衙役）」，總會將真正懂雅樂的百姓與歌者嚇跑。</p>
+        <p>今夜是中秋，是虎丘一年中最美的時刻。我決意脫下這身虛偽的烏紗帽，換上平民的素衣。我要去尋找民間最真實的生命力，聽聽那傳說中能令飛鳥徘徊的靈魂之音。因為唯有拋開身分，才能「獨抒性靈」。</p>
+      </div>
+      <div class="flex flex-col md:flex-row gap-4 justify-center items-center">
+        <button id="btn-start-game" class="px-8 py-3 bg-amber-700 hover:bg-amber-600 text-white rounded-full text-lg md:text-xl font-bold border-2 border-amber-400 shadow-[0_0_20px_rgba(217,119,6,0.6)] transition-all hover:scale-105">
+          微服入山 (開始遊戲)
+        </button>
+        <button id="btn-upload-bgm-start" class="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-full text-sm font-bold border-2 border-slate-600 transition-all shadow-lg flex items-center gap-2">
+          <span>🎵 載入電腦自訂音樂</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 遊戲 UI 介面 ================= -->
+  <div id="game-ui" class="absolute inset-0 pointer-events-none z-10 flex flex-col justify-between hidden">
+    <div class="flex justify-between items-start p-4 w-full">
+      <!-- 玩家狀態 -->
+      <div class="bg-slate-900/80 backdrop-blur border border-slate-700 rounded-lg p-3 pointer-events-auto shadow-lg flex flex-col gap-2 min-w-[200px]">
+        <div class="flex justify-between items-center border-b border-slate-700 pb-2">
+          <span class="font-bold text-amber-400">袁宏道 (吳客)</span>
+          <button id="btn-dress" class="px-2 py-1 bg-blue-900/60 hover:bg-blue-800 text-blue-200 text-xs rounded transition border border-blue-700">
+            [X] 切換服裝
+          </button>
+        </div>
+        <div class="text-xs text-gray-300 flex justify-between">
+          <span>當前裝束：</span>
+          <span id="ui-dress-name" class="text-green-400 font-bold px-2 py-0.5 rounded bg-slate-800 border border-slate-600">儒生素衣</span>
+        </div>
+        <div class="mt-1">
+          <div class="flex justify-between text-xs mb-1">
+            <span class="text-red-400 font-bold">官差警惕度</span>
+            <span id="ui-suspicion-text" class="text-red-300">0%</span>
+          </div>
+          <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+            <div id="ui-suspicion-bar" class="h-full bg-amber-500 transition-all duration-300" style="width: 0%;"></div>
+          </div>
+        </div>
+      </div>
+      <!-- 位置與功能選單 -->
+      <div class="bg-slate-900/80 backdrop-blur border border-amber-900/50 rounded-lg p-3 pointer-events-auto text-right flex flex-col items-end">
+        <div class="text-xs text-gray-400 mb-1">所在位置</div>
+        <div id="ui-location" class="text-lg font-bold text-amber-300">虎丘山門</div>
+        <div class="flex gap-2 mt-2">
+          <button id="btn-upload-bgm-game" class="px-3 py-1 bg-slate-800 text-amber-300 text-xs rounded border border-slate-600 hover:bg-slate-700 transition shadow-lg">
+            🎵 載入音樂
+          </button>
+          <button id="btn-manual" class="px-3 py-1 bg-amber-950 text-amber-200 text-xs rounded border border-amber-700 hover:bg-amber-900 transition shadow-lg">
+            📖 吳客遊記
+          </button>
+        </div>
+      </div>
+    </div>
+    <!-- 任務清單 -->
+    <div class="p-4 flex justify-end pointer-events-auto">
+      <div class="bg-slate-900/80 backdrop-blur border border-slate-700 rounded-lg p-3 max-w-xs shadow-lg text-xs w-64 mb-16 md:mb-0">
+        <h3 class="font-bold text-amber-400 mb-2 border-b border-slate-700 pb-1">行程使命</h3>
+        <div class="space-y-2">
+          <div>
+            <span class="text-gray-300 font-bold">1. 尋幽聽雅曲</span>
+            <div class="text-amber-200/70 ml-2" id="ui-q1">進度: 0 / 4 階段</div>
+          </div>
+          <div>
+            <span class="text-gray-300 font-bold">2. 興復平遠堂</span>
+            <div class="text-gray-500 ml-2" id="ui-q2">尚未開啟 (尋找江進之)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 遊戲畫布 ================= -->
+  <canvas id="gameCanvas" class="w-full h-full block bg-slate-950"></canvas>
+
+  <!-- ================= 對話框系統 ================= -->
+  <div id="dialogue-overlay" class="absolute bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-3xl bg-slate-900/95 border-2 border-amber-700/80 rounded-lg p-6 hidden z-50 shadow-2xl transition-all bg-cover bg-center overflow-hidden">
+    <div id="dialogue-inner-container" class="flex gap-4 pointer-events-none w-full h-full relative z-10">
+      <!-- 立繪容器 -->
+      <div id="dialogue-portrait-container" class="hidden shrink-0">
+        <img id="dialogue-portrait" src="" alt="立繪" class="w-24 h-24 md:w-32 md:h-32 object-cover rounded border-2 border-amber-600/50 bg-slate-800 shadow-md">
+      </div>
+      <!-- 對話文字 -->
+      <div class="flex-1 flex flex-col justify-between">
+        <div class="flex justify-between items-end mb-3 border-b border-amber-900/50 pb-2">
+          <h3 id="dialogue-name" class="text-xl font-bold text-amber-400 text-glow">名字</h3>
+          <span class="text-xs text-gray-400 animate-pulse bg-slate-800/80 px-2 py-1 rounded">點擊 或 按 [空白鍵] 繼續 ▼</span>
+        </div>
+        <p id="dialogue-text" class="text-gray-200 text-base md:text-lg leading-relaxed min-h-[70px] drop-shadow-[0_2px_2px_rgba(0,0,0,0.9)]"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 節奏遊戲介面 ================= -->
+  <div id="rhythm-overlay" class="absolute inset-0 bg-slate-950/95 z-40 hidden flex-col items-center justify-center p-4">
+    <div class="max-w-2xl w-full flex flex-col items-center">
+      <h2 class="text-3xl font-bold text-amber-400 mb-2" id="rhythm-title">竹肉相發</h2>
+      <p class="text-gray-400 text-sm mb-6 text-center">當音符到達左側判定線時，按下對應的方向鍵 (WASD)。<br>分數達到 <strong class="text-amber-300 text-lg">60</strong> 即可過關。</p>
+      
+      <div class="flex justify-between w-full mb-2 px-4 text-sm font-bold">
+        <span class="text-green-400">分數: <span id="rhythm-score">0</span> / 60</span>
+        <span class="text-amber-300">連擊: <span id="rhythm-combo">0</span></span>
+      </div>
+
+      <div class="w-full h-24 bg-slate-900 border border-slate-700 rounded-lg relative overflow-hidden shadow-inner mb-8">
+        <div class="absolute left-[15%] top-0 bottom-0 w-8 bg-amber-500/30 border-l border-r border-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.8)] z-10 -ml-4"></div>
+        <div class="absolute left-[15%] top-1 -ml-3 text-[10px] text-amber-400 font-bold z-10">判定區</div>
+        <div id="rhythm-notes-container" class="absolute inset-0"></div>
+      </div>
+
+      <div class="flex gap-4">
+        <button class="rhythm-btn w-16 h-16 rounded-full bg-slate-800 border-2 border-slate-600 text-2xl hover:bg-slate-700 active:border-amber-400" data-key="left">◀</button>
+        <button class="rhythm-btn w-16 h-16 rounded-full bg-slate-800 border-2 border-slate-600 text-2xl hover:bg-slate-700 active:border-amber-400" data-key="up">▲</button>
+        <button class="rhythm-btn w-16 h-16 rounded-full bg-slate-800 border-2 border-slate-600 text-2xl hover:bg-slate-700 active:border-amber-400" data-key="down">▼</button>
+        <button class="rhythm-btn w-16 h-16 rounded-full bg-slate-800 border-2 border-slate-600 text-2xl hover:bg-slate-700 active:border-amber-400" data-key="right">▶</button>
+      </div>
+      <button id="btn-quit-rhythm" class="mt-8 px-4 py-2 bg-red-900/50 text-red-200 rounded border border-red-800 hover:bg-red-800 transition text-sm">放棄聽曲</button>
+    </div>
+  </div>
+
+  <!-- ================= 學習手冊 ================= -->
+  <div id="manual-modal" class="absolute inset-0 bg-black/80 backdrop-blur z-[80] hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-amber-900 rounded-lg max-w-xl w-full max-h-[80vh] overflow-y-auto flex flex-col shadow-2xl relative">
+      <div class="sticky top-0 bg-slate-950 p-4 border-b border-amber-900 flex justify-between items-center z-10">
+        <h2 class="text-amber-400 font-bold text-lg">📚 吳客遊記 (遊戲手冊)</h2>
+        <button id="btn-close-manual" class="text-gray-400 hover:text-white text-xl">✕</button>
+      </div>
+      <div class="p-6 text-sm text-gray-300 space-y-5">
+        <div>
+          <h3 class="text-amber-500 font-bold mb-1 border-b border-slate-700 pb-1">遊戲操作</h3>
+          <ul class="list-disc pl-5 space-y-1 text-xs">
+            <li>鍵盤 <span class="bg-slate-800 px-1 rounded">WASD</span> 移動，按 <span class="bg-slate-800 px-1 rounded">空白鍵</span> 互動與對話。</li>
+            <li>按 <span class="bg-slate-800 px-1 rounded">X 鍵</span> 切換「官服」與「素衣」。穿官服走得快，但會吸引衙役，嚇跑歌手。</li>
+          </ul>
+        </div>
+        <div>
+          <h3 class="text-amber-500 font-bold mb-1 border-b border-slate-700 pb-1">《虎丘記》原文意境與遊戲對應</h3>
+          <p class="bg-slate-950 p-3 rounded italic text-amber-100/80 leading-relaxed text-xs">
+            「布席之初，唱者千百，聲若聚蚊... 分曹部署，竟以歌喉相鬥... 已而明月浮空，石光如練，一切瓦釜，寂然停聲... 比至夜深...一夫登場，四座屏息，音若細發，響徹雲際...」
+          </p>
+          <p class="mt-2 text-xs">遊戲中四階段的聽曲任務正是呼應原文由俗至雅的層次。在地圖上尋找NPC，他們的話語皆是袁宏道筆下的絕美風景。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 史詩級 真結局 / 賞析介面 ================= -->
+  <div id="grand-ending-screen" class="absolute inset-0 z-[70] bg-slate-950/95 backdrop-blur-md hidden flex-col items-center p-4 md:p-10 transition-opacity duration-1000 opacity-0">
+    <div class="max-w-4xl w-full h-full flex flex-col bg-slate-900 border-2 border-amber-600/50 rounded-xl shadow-[0_0_50px_rgba(217,119,6,0.2)] overflow-hidden">
+      <div class="text-center p-6 border-b border-amber-900/50 bg-slate-950 relative">
+        <span class="text-4xl block mb-2">🌕</span>
+        <h2 class="text-3xl font-black text-amber-400 tracking-widest text-glow">真結局：如月之誓</h2>
+        <p class="text-gray-400 text-sm mt-2">《虎丘記》遊玩通關總結與文學賞析</p>
+      </div>
+      <div class="flex-1 overflow-y-auto p-6 md:p-10 custom-scroll space-y-10">
+        <section>
+          <h3 class="text-2xl font-bold text-amber-500 mb-4 flex items-center gap-2"><span class="w-2 h-6 bg-amber-500 inline-block"></span> 劇終：解官稱吳客</h3>
+          <div class="text-gray-300 leading-relaxed space-y-4 bg-slate-950/50 p-5 rounded-lg border border-slate-800">
+            <p>在那一夫登場、音若細發的天籟之後，你與江進之、方子公在生公石上暢飲。你望著空明澄澈的月光，徹底厭倦了官場的繁文縟節與「烏紗之橫」。</p>
+            <p>你對著明月立下誓言：「他日去官，有不聽曲此石上者，如月！」</p>
+            <p>不久後，你以病為由辭去吳縣知縣。無官一身輕的你，終於可以自稱「吳客」，自由自在地穿梭於山水之間。虎丘之月，見證了你找回最真實的「性靈」。</p>
+          </div>
+        </section>
+        <section>
+          <h3 class="text-2xl font-bold text-amber-500 mb-4 flex items-center gap-2"><span class="w-2 h-6 bg-blue-500 inline-block"></span> 文本賞析：由喧囂入空靈的層遞之美</h3>
+          <div class="text-gray-300 leading-relaxed space-y-4">
+            <p>遊戲中你所經歷的四個聽曲階段，正是袁宏道《虎丘記》最精華的寫作手法——**「層遞法」**：</p>
+            <ul class="list-disc pl-6 space-y-2 text-sm md:text-base">
+              <li><strong class="text-amber-200">第一層 (聚蚊之聲)</strong>：寫平民百姓的熱鬧。「唱者千百」，極言其俗與雜。</li>
+              <li><strong class="text-amber-200">第二層 (歌喉相鬥)</strong>：「分曹部署，竟以歌喉相鬥」，人數篩減至數十人。</li>
+              <li><strong class="text-amber-200">第三層 (竹肉相發)</strong>：夜深人靜，「一切瓦釜，寂然停聲」。只剩一簫一管，聽眾僅剩三四人。</li>
+              <li><strong class="text-amber-200">第四層 (一夫登場)</strong>：達到極致的「雅」。「音若細發，響徹雲際」，能讓飛鳥徘徊，壯士下淚。</li>
+            </ul>
+          </div>
+        </section>
+        <section>
+          <h3 class="text-2xl font-bold text-amber-500 mb-4 flex items-center gap-2"><span class="w-2 h-6 bg-red-500 inline-block"></span> 歷史與流派：公安派與「獨抒性靈」</h3>
+          <div class="text-gray-300 leading-relaxed space-y-4 bg-slate-950/50 p-5 rounded-lg border border-slate-800">
+            <p>袁宏道與其兄袁宗道、弟袁中道合稱「三袁」，是晚明文學流派**「公安派」**的領袖。</p>
+            <p>公安派大膽提出 <strong class="text-amber-300 text-lg">「獨抒性靈，不拘格套」</strong> 的主張，認為好的文章應該真實表達自己的情感，不應沾染官場的虛偽做作。</p>
+            <p>在《虎丘記》中，官服代表著束縛；而素衣與民間歌聲，則代表著自由。袁宏道的解官，正是心靈的解放與文學理念的實踐。</p>
+          </div>
+        </section>
+      </div>
+      <div class="p-6 bg-slate-950 border-t border-amber-900/50 flex justify-center">
+        <button id="btn-restart-game" class="px-8 py-3 bg-amber-700 hover:bg-amber-600 text-white rounded-lg font-bold transition-all shadow-lg text-lg">重返虎丘 (再次遊玩)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 手機虛擬搖桿 ================= -->
+  <div id="mobile-controls" class="absolute bottom-6 right-6 z-20 flex flex-col items-center gap-2 md:hidden">
+    <button id="btn-action-mobile" class="w-14 h-14 bg-amber-700/80 backdrop-blur rounded-full border border-amber-500 text-white font-bold shadow-lg flex items-center justify-center mb-2 active:bg-amber-600">互動</button>
+    <div class="grid grid-cols-3 gap-1">
+      <div></div><button class="dpad-btn w-12 h-12 bg-slate-800/80 rounded-lg border border-slate-600 text-white active:bg-amber-700" data-dir="up">▲</button><div></div>
+      <button class="dpad-btn w-12 h-12 bg-slate-800/80 rounded-lg border border-slate-600 text-white active:bg-amber-700" data-dir="left">◀</button>
+      <button class="dpad-btn w-12 h-12 bg-slate-800/80 rounded-lg border border-slate-600 text-white active:bg-amber-700" data-dir="down">▼</button>
+      <button class="dpad-btn w-12 h-12 bg-slate-800/80 rounded-lg border border-slate-600 text-white active:bg-amber-700" data-dir="right">▶</button>
+    </div>
+  </div>
+
+  <script>
+    /* ====================================================================================
+       🌟🌟🌟 圖床資源設定區 (Asset Configuration) 🌟🌟🌟
+       請將下方引號內的網址，替換為您上傳到圖床的圖片網址。無圖片時系統會自動啟動防呆。
+       ==================================================================================== */
+    const IMAGE_URLS = {
+        // 🖼️【介面與場景圖】 
+        bg_start:    "https://i.postimg.cc/ydz5KXFt/you-xi-feng-mian-tu.jpg", // ★遊戲首頁背景圖★
+        dialogue_bg: "https://i.postimg.cc/3xzrgVT8/dui-hua-kuang.jpg", // 對話框背景圖 
+        bg_shengong: "https://i.postimg.cc/vZcCtmY0/sheng-gong-shi.jpg", // 生公石區域背景 (建議尺寸 1200x400)
+        bg_jianquan: "https://i.postimg.cc/Z5CXxqbV/ping-yuan-tang-yi-zhi.jpg", // 劍泉與平遠堂舊址背景 (建議尺寸 1200x500)
+        bg_qianren:  "https://i.postimg.cc/qvzWx7J5/qian-ren-shi.jpg", // 千人石背景 (建議尺寸 1200x400)
+        bg_shanmen:  "https://i.postimg.cc/YCZZnw08/hu-qiu-shan-men.jpg", // 虎丘山門背景 (建議尺寸 1200x300)
+
+        // 👤【對話立繪】 (對話框左側顯示的頭像，建議正方形 256x256)
+        portrait_yuan:   "https://i.postimg.cc/7LC2fC2Z/yuan-hong-dao.png", // 袁宏道 (主角)
+        portrait_jiang:  "https://i.postimg.cc/ydc3ywjy/jiang-jin-zhi.png", // 江進之 (好友)
+        portrait_fang:   "https://i.postimg.cc/4dVHQrPV/fang-zi-gong.png", // 方子公 (好友)
+        portrait_singer_1: "https://i.postimg.cc/bvK2bzxS/qun-chang-zhe.png", // 群唱者 (聚蚊之聲)
+        portrait_singer_2: "https://i.postimg.cc/HLf75pw5/dou-ge-zhe.png", // 鬥歌者 (分曹部署)
+        portrait_singer_3: "https://i.postimg.cc/YSJmgp61/xiao-guan-ke.png", // 簫管客 (竹肉相發)
+        portrait_singer_4: "https://i.postimg.cc/tTWnNLkP/yi-fu.png", // 一夫 (極致獨唱)
+        portrait_guard:  "https://i.postimg.cc/cJKnrKn4/zao-li.png", // 巡邏官差 (皁隸)
+        portrait_n1:     "https://i.postimg.cc/k5kt8nQr/jiu-xi-shang-fan.png", // 酒席商販
+        portrait_n2:     "https://i.postimg.cc/XvTyFVfS/feng-ya-wen-shi.png", // 風雅文士
+        portrait_n3:     "https://i.postimg.cc/8CqrW1RL/shang-yue-you-ren.png", // 賞月遊人
+
+        // 🚶【地圖人物行走圖】 (地圖上的 Q 版小人，建議尺寸 64x64)
+        sprite_yuan:   "https://i.postimg.cc/7LC2fC2Z/yuan-hong-dao.png", // 袁宏道 (主角)
+        sprite_jiang:  "https://i.postimg.cc/ydc3ywjy/jiang-jin-zhi.png", // 江進之 (好友)
+        sprite_fang:   "https://i.postimg.cc/4dVHQrPV/fang-zi-gong.png", // 方子公 (好友)
+        sprite_singer_1: "https://i.postimg.cc/bvK2bzxS/qun-chang-zhe.png", // 群唱者 (聚蚊之聲)
+        sprite_singer_2: "https://i.postimg.cc/HLf75pw5/dou-ge-zhe.png", // 鬥歌者 (分曹部署)
+        sprite_singer_3: "https://i.postimg.cc/YSJmgp61/xiao-guan-ke.png", // 簫管客 (竹肉相發)
+        sprite_singer_4: "https://i.postimg.cc/tTWnNLkP/yi-fu.png", // 一夫 (極致獨唱)
+        sprite_guard:  "https://i.postimg.cc/cJKnrKn4/zao-li.png", // 巡邏官差 (皁隸)
+        sprite_n1:     "https://i.postimg.cc/k5kt8nQr/jiu-xi-shang-fan.png", // 酒席商販
+        sprite_n2:     "https://i.postimg.cc/XvTyFVfS/feng-ya-wen-shi.png", // 風雅文士
+        sprite_n3:     "https://i.postimg.cc/8CqrW1RL/shang-yue-you-ren.png", // 賞月遊人
+
+        // 💎【地圖道具與裝飾】 (建議尺寸 64x64)
+        item_wood:  "https://i.postimg.cc/Pr2pybbG/da-liang-gu-mu.png", // 大梁古木
+        item_stone: "https://i.postimg.cc/Nfp9D88v/qing-shi-tiao-shi.png", // 青石條石
+        item_brick: "https://i.postimg.cc/dt4k6RRP/ping-yuan-gu-zhuan.png", // 平遠古磚
+        obj_tree:   "https://i.postimg.cc/mgkc5cVs/shu-mu.png", // 裝飾物：樹
+        obj_lantern:"https://i.postimg.cc/65Y2cVrg/deng-long.png"  // 裝飾物：燈籠
+    };
+
+    /* --- 圖片預載入系統 --- */
+    const IMAGES = {};
+    for (let key in IMAGE_URLS) {
+        if (IMAGE_URLS[key]) {
+            IMAGES[key] = new Image();
+            IMAGES[key].src = IMAGE_URLS[key];
+        }
+    }
+    function drawImageIfLoaded(ctx, imgKey, x, y, width, height) {
+        const img = IMAGES[imgKey];
+        if (img && img.complete && img.naturalWidth !== 0) {
+            ctx.drawImage(img, x, y, width, height);
+            return true;
+        }
+        return false;
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+
+      /* ================= 🎵 本地電腦音樂處理 ================= */
+      const customBgm = document.getElementById('custom-bgm');
+      const bgmUpload = document.getElementById('bgm-upload');
+      const btnUploadStart = document.getElementById('btn-upload-bgm-start');
+      const btnUploadGame = document.getElementById('btn-upload-bgm-game');
+      let isBgmLoaded = false;
+
+      function handleBgmUpload(e) {
+        const file = e.target.files[0];
+        if (file) {
+          const url = URL.createObjectURL(file);
+          customBgm.src = url;
+          customBgm.volume = 0.5;
+          customBgm.play();
+          isBgmLoaded = true;
+          if (btnUploadStart) btnUploadStart.innerText = "⏸️ 暫停背景音樂";
+          if (btnUploadGame) btnUploadGame.innerText = "⏸️ 暫停音樂";
+        }
+      }
+      bgmUpload.addEventListener('change', handleBgmUpload);
+
+      function toggleBgm() {
+        if (!isBgmLoaded) {
+          bgmUpload.click();
+        } else {
+          if (customBgm.paused) {
+            customBgm.play();
+            if (btnUploadStart) btnUploadStart.innerText = "⏸️ 暫停背景音樂";
+            if (btnUploadGame) btnUploadGame.innerText = "⏸️ 暫停音樂";
+          } else {
+            customBgm.pause();
+            if (btnUploadStart) btnUploadStart.innerText = "▶️ 播放背景音樂";
+            if (btnUploadGame) btnUploadGame.innerText = "▶️ 播放音樂";
+          }
+        }
+      }
+      btnUploadStart.addEventListener('click', toggleBgm);
+      btnUploadGame.addEventListener('click', toggleBgm);
+
+      /* ================= 標題畫面背景圖載入 ================= */
+      const startScreen = document.getElementById('start-screen');
+      if (IMAGE_URLS.bg_start) {
+        startScreen.style.backgroundImage = `url('${IMAGE_URLS.bg_start}')`;
+      }
+
+
+      // 音效系統 (遊戲內部音效)
+      let audioCtx = null;
+      function initAudio() {
+        if (!audioCtx) {
+          try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } 
+          catch(e) { console.warn("Audio Context not supported"); }
+        }
+        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+      }
+
+      const PENTATONIC = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25, 783.99, 880.00];
+      function playTone(index, duration = 0.5, type = 'sine') {
+        if (!audioCtx) return;
+        try {
+          const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+          osc.type = type; osc.frequency.setValueAtTime(PENTATONIC[index % PENTATONIC.length], audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.3, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+          osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + duration);
+        } catch(e) {}
+      }
+
+      // 🎮 遊戲引擎與狀態
+      const canvas = document.getElementById('gameCanvas');
+      const ctx = canvas.getContext('2d');
+      const MAP_WIDTH = 1200; const MAP_HEIGHT = 1600;
+      const camera = { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight };
+
+      function resize() {
+        canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+        camera.width = canvas.width; camera.height = canvas.height;
+      }
+      window.addEventListener('resize', resize); resize();
+
+      const keys = { w: false, a: false, s: false, d: false };
+      const state = {
+        isRunning: false, gameFinished: false, rhythmActive: false,
+        player: { x: MAP_WIDTH / 2, y: MAP_HEIGHT - 100, radius: 14, speed: 4.0, dress: 'plain', color: '#3b82f6' },
+        suspicion: 0, quests: { musicStage: 0, reconstruct: 0, materials: 0 },
+        scenery: [], npcs: [], guards: [], items: [], particles: []
+      };
+
+      const ZONES = [
+        { id: 'bg_shengong', name: '生公石', yMin: 0, yMax: 400, color1: '#020617', color2: '#0f172a' },
+        { id: 'bg_jianquan', name: '劍泉與平遠堂舊址', yMin: 400, yMax: 900, color1: '#0f172a', color2: '#1e293b' },
+        { id: 'bg_qianren', name: '千人石', yMin: 900, yMax: 1300, color1: '#1e293b', color2: '#334155' },
+        { id: 'bg_shanmen', name: '虎丘山門', yMin: 1300, yMax: 1600, color1: '#334155', color2: '#475569' }
+      ];
+      function getZone(y) { return ZONES.find(z => y >= z.yMin && y < z.yMax) || ZONES[3]; }
+
+      function initWorld() {
+        state.scenery = [];
+        for (let i = 0; i < 150; i++) {
+          let x = Math.random() * MAP_WIDTH; let y = Math.random() * MAP_HEIGHT;
+          if (x > MAP_WIDTH/2 - 150 && x < MAP_WIDTH/2 + 150) x = (Math.random() > 0.5) ? (x - 200) : (x + 200);
+          x = Math.max(0, Math.min(MAP_WIDTH, x));
+          let type = 'tree'; let emoji = '🌲'; 
+          if (y < 400) emoji = '🎍'; if (y > 400 && y < 900 && Math.random() > 0.5) emoji = '🪨'; 
+          if (Math.random() > 0.9) { type = 'lantern'; emoji = '🏮'; }
+          state.scenery.push({ x, y, emoji, type, size: 20 + Math.random()*15 });
+        }
+        state.npcs = [
+          { id: 'jiang', name: '江進之 (好友)', x: MAP_WIDTH/2 - 100, y: 650, color: '#06b6d4', icon: '江', portrait: 'portrait_jiang', sprite: 'sprite_jiang' },
+          { id: 'fang', name: '方子公 (好友)', x: MAP_WIDTH/2 + 150, y: 350, color: '#a855f7', icon: '方', portrait: 'portrait_fang', sprite: 'sprite_fang' },
+          { id: 's1', name: '群唱者', x: MAP_WIDTH/2, y: 1150, color: '#f59e0b', icon: '唱', stage: 1, portrait: 'portrait_singer_1', sprite: 'sprite_singer_1' },
+          { id: 's2', name: '鬥歌者', x: MAP_WIDTH/2 - 120, y: 1000, color: '#ef4444', icon: '鬥', stage: 2, portrait: 'portrait_singer_2', sprite: 'sprite_singer_2' },
+          { id: 's3', name: '簫管客', x: MAP_WIDTH/2 + 80, y: 250, color: '#10b981', icon: '簫', stage: 3, portrait: 'portrait_singer_3', sprite: 'sprite_singer_3' },
+          { id: 's4', name: '一夫', x: MAP_WIDTH/2, y: 120, color: '#f43f5e', icon: '夫', stage: 4, portrait: 'portrait_singer_4', sprite: 'sprite_singer_4' },
+          { id: 'n1', name: '酒席商販', x: MAP_WIDTH/2 + 150, y: 1450, color: '#8b5cf6', icon: '商', portrait: 'portrait_n1', sprite: 'sprite_n1' },
+          { id: 'n2', name: '風雅文士', x: MAP_WIDTH/2 - 200, y: 1250, color: '#eab308', icon: '士', portrait: 'portrait_n2', sprite: 'sprite_n2' },
+          { id: 'n3', name: '賞月遊人', x: MAP_WIDTH/2 + 200, y: 1050, color: '#f472b6', icon: '民', portrait: 'portrait_n3', sprite: 'sprite_n3' }
+        ];
+        state.guards = [
+          { x: MAP_WIDTH/2, y: 1400, speed: 1.5, dir: 1, minX: 200, maxX: MAP_WIDTH-200, radius: 14 },
+          { x: MAP_WIDTH/2 - 200, y: 1050, speed: 2.0, dir: -1, minX: 100, maxX: MAP_WIDTH-100, radius: 14 },
+          { x: MAP_WIDTH/2 + 200, y: 700, speed: 2.5, dir: 1, minX: 200, maxX: MAP_WIDTH-200, radius: 14 }
+        ];
+        state.items = [
+          { id: 'item_wood', name: '大梁古木', x: 250, y: 800, collected: false },
+          { id: 'item_stone', name: '青石條石', x: MAP_WIDTH - 250, y: 750, collected: false },
+          { id: 'item_brick', name: '平遠古磚', x: 300, y: 500, collected: false }
+        ];
+      }
+
+      /* 💬 對話系統 */
+      let dialogueQueue = []; let isTyping = false; let typeInterval = null; let currentFullText = ""; let onDialogueComplete = null;
+      function startDialogue(name, texts, portraitKey = 'portrait_yuan', callback = null) {
+        const overlay = document.getElementById('dialogue-overlay');
+        overlay.classList.remove('hidden'); 
+        document.getElementById('dialogue-name').innerText = name;
+        
+        const portraitImg = document.getElementById('dialogue-portrait');
+        const portraitContainer = document.getElementById('dialogue-portrait-container');
+        if (portraitKey && IMAGES[portraitKey] && IMAGES[portraitKey].complete && IMAGES[portraitKey].naturalWidth !== 0) {
+            portraitImg.src = IMAGES[portraitKey].src; portraitContainer.classList.remove('hidden');
+        } else {
+            portraitContainer.classList.add('hidden'); 
+        }
+
+        dialogueQueue = typeof texts === 'string' ? [texts] : [...texts]; 
+        onDialogueComplete = callback; showNextDialogue();
+      }
+
+      function showNextDialogue() {
+        if (dialogueQueue.length === 0) {
+          document.getElementById('dialogue-overlay').classList.add('hidden');
+          if (onDialogueComplete) { onDialogueComplete(); onDialogueComplete = null; }
+          return;
+        }
+        currentFullText = dialogueQueue.shift(); document.getElementById('dialogue-text').innerText = ''; isTyping = true; let i = 0;
+        if (typeInterval) clearInterval(typeInterval); playTone(7, 0.1, 'triangle'); 
+        typeInterval = setInterval(() => {
+          document.getElementById('dialogue-text').innerText += currentFullText.charAt(i); i++;
+          if (i >= currentFullText.length) { clearInterval(typeInterval); isTyping = false; }
+        }, 25);
+      }
+
+      function handleAdvance(e) {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
+        if (document.getElementById('dialogue-overlay').classList.contains('hidden')) return;
+        if (isTyping) { clearInterval(typeInterval); document.getElementById('dialogue-text').innerText = currentFullText; isTyping = false; } 
+        else { showNextDialogue(); }
+      }
+      document.getElementById('dialogue-overlay').addEventListener('click', handleAdvance);
+
+      /* 🕹️ 鍵盤與切換服裝邏輯 */
+      function toggleDress() {
+        initAudio();
+        state.player.dress = (state.player.dress === 'plain') ? 'official' : 'plain';
+        const uiName = document.getElementById('ui-dress-name');
+        
+        if (state.player.dress === 'official') {
+          state.player.speed = 5.5; state.player.color = '#dc2626'; 
+          uiName.innerText = '烏紗官服'; uiName.className = 'text-red-400 font-bold px-2 py-0.5 rounded bg-slate-800 border border-slate-600';
+          spawnParticles(state.player.x, state.player.y, '#ef4444'); playTone(0, 0.2, 'square');
+          if(document.getElementById('dialogue-overlay').classList.contains('hidden')){
+              startDialogue("袁宏道 (內心)", "這身烏紗雖顯尊貴，但『甚矣，烏紗之橫，皂隸之俗哉』。這只會讓百姓退避三舍，無法聽到真實的心聲。", "portrait_yuan");
+          }
+        } else {
+          state.player.speed = 4.0; state.player.color = '#3b82f6';
+          uiName.innerText = '儒生素衣'; uiName.className = 'text-green-400 font-bold px-2 py-0.5 rounded bg-slate-800 border border-slate-600';
+          spawnParticles(state.player.x, state.player.y, '#3b82f6'); playTone(4, 0.4, 'sine');
+        }
+      }
+
+      window.addEventListener('keydown', (e) => {
+        const k = e.key.toLowerCase();
+        if (k === 'w' || k === 'arrowup') keys.w = true; if (k === 'a' || k === 'arrowleft') keys.a = true;
+        if (k === 's' || k === 'arrowdown') keys.s = true; if (k === 'd' || k === 'arrowright') keys.d = true;
+        
+        if (e.code === 'Space') { 
+            e.preventDefault(); 
+            if (!document.getElementById('dialogue-overlay').classList.contains('hidden')) handleAdvance(e); 
+            else if (!state.rhythmActive && !state.gameFinished) handleAction(); 
+        }
+        if (k === 'x' && !state.rhythmActive && !state.gameFinished) toggleDress();
+
+        if (state.rhythmActive) { if (k === 'a' || k === 'arrowleft') rhythmHit('left'); if (k === 'w' || k === 'arrowup') rhythmHit('up'); if (k === 's' || k === 'arrowdown') rhythmHit('down'); if (k === 'd' || k === 'arrowright') rhythmHit('right'); }
+      });
+      window.addEventListener('keyup', (e) => { const k = e.key.toLowerCase(); if (k === 'w' || k === 'arrowup') keys.w = false; if (k === 'a' || k === 'arrowleft') keys.a = false; if (k === 's' || k === 'arrowdown') keys.s = false; if (k === 'd' || k === 'arrowright') keys.d = false; });
+
+      document.querySelectorAll('.dpad-btn').forEach(btn => { 
+        btn.addEventListener('touchstart', (e) => { e.preventDefault(); let dir = btn.dataset.dir; if(dir==='up') keys.w=true; if(dir==='down') keys.s=true; if(dir==='left') keys.a=true; if(dir==='right') keys.d=true; }); 
+        btn.addEventListener('touchend', (e) => { e.preventDefault(); let dir = btn.dataset.dir; if(dir==='up') keys.w=false; if(dir==='down') keys.s=false; if(dir==='left') keys.a=false; if(dir==='right') keys.d=false; }); 
+      });
+      document.getElementById('btn-action-mobile').addEventListener('click', (e) => { 
+        if (!document.getElementById('dialogue-overlay').classList.contains('hidden')) handleAdvance(e); else if (!state.gameFinished) handleAction(); 
+      });
+
+      function spawnParticles(x, y, color) { for(let i=0; i<10; i++) state.particles.push({ x, y, vx: (Math.random()-0.5)*4, vy: (Math.random()-0.5)*4, life: 1.0, color }); }
+
+      // 🎭 NPC與物件互動邏輯
+      function handleAction() {
+        initAudio();
+        if (state.quests.reconstruct === 1) {
+          for (let item of state.items) {
+            if (!item.collected && Math.hypot(state.player.x - item.x, state.player.y - item.y) < 40) {
+              item.collected = true; state.quests.materials++; playTone(8, 0.5, 'sine'); spawnParticles(item.x, item.y, '#fcd34d');
+              let msg = `在荒煙蔓草中尋得了 ${item.name}！ (${state.quests.materials}/3)`;
+              if (state.quests.materials >= 3) msg += " 材料終於收集完畢，快拿去給江進之，以償他興復平遠堂的夙願！";
+              document.getElementById('ui-q2').innerText = `收集中 (${state.quests.materials}/3)`;
+              startDialogue("系統提示", msg, null); return;
+            }
+          }
+        }
+        for (let npc of state.npcs) {
+          if (Math.hypot(state.player.x - npc.x, state.player.y - npc.y) < 50) {
+            if (npc.id.startsWith('s') && state.suspicion > 60) {
+              startDialogue("系統提示", "你身上那股濃濃的『官府氣息』與周圍的巡邏皁隸，讓歌者們見狀紛紛避匿，不敢出聲！這正是『歌者聞令來，皆避匿去』。請換上素衣，遠離官差再來。", null); return;
+            }
+            if (npc.id === 'jiang') { 
+              if (state.quests.reconstruct === 0) {
+                startDialogue(npc.name, ["宏道，你終於肯褪下那身拘束的官服來見我了！我們公安派提倡的『獨抒性靈』，不就是要這般真性情嗎？", "你看我們眼前這片空地，正是『平遠堂舊址』。如今空曠無際，只剩下遠處虞山的一點輪廓在望。", "這堂廢棄已久。我想籌劃在此建祠，專門祭祀韋蘇州（韋應物）與白樂天（白居易）兩位先賢。他們也是真性情的詩人啊。", "山川興廢，信有時哉！宏道，你願助我尋找散落在山門與劍泉一帶的『古木、條石、古磚』三樣建材嗎？"], npc.portrait, () => { state.quests.reconstruct = 1; document.getElementById('ui-q2').innerText = '收集中 (0/3)'; document.getElementById('ui-q2').className = 'text-amber-300 ml-2'; });
+              } else if (state.quests.reconstruct === 1 && state.quests.materials >= 3) {
+                startDialogue(npc.name, ["太好了！有了這些古建材，平遠堂終於可以重建，韋、白二公的精魂有處可棲了！", "宏道，你看這山川，有的頹圮，有的興盛。這都是時代的印記啊。但唯有我們追求的真情實感，能超越這些興廢。", "夜深了，平遠堂大功告成。走！我們趕緊去山頂的『生公石』，那裡今晚有極致的天籟！"], npc.portrait, () => { state.quests.reconstruct = 2; document.getElementById('ui-q2').innerText = '已完成 ✨'; document.getElementById('ui-q2').className = 'text-green-400 font-bold ml-2'; });
+              } else { startDialogue(npc.name, "平遠堂的重建，是我們對這片山水的一點交代。快去幫我找建材吧！", npc.portrait); }
+            } 
+            else if (npc.id === 'fang') {
+              if (state.player.dress === 'official') startDialogue(npc.name, "哎呀，知縣老爺！你穿這身衣服來，是想把這滿山的風雅客都嚇跑嗎？快換下來！", npc.portrait);
+              else startDialogue(npc.name, ["宏道，你看旁邊這『劍泉』，深不可測，飛巖如削。", "這地方，若是過了正午，日光直射在石頭上，刺眼得讓人無法久坐。", "好在現在是夜晚。不過，要聽曲，還是得去最高處的『生公石』才行！那裡『石光如練』，沒有俗世的干擾，是最純粹的舞台。"], npc.portrait);
+            }
+            else if (npc.id === 'n1') { startDialogue(npc.name, "客官，要買酒嗎？今夜虎丘『傾城闔戶，連臂而至』，你看這滿街的士女，哪個不是靚妝麗服？大家都在這街衢之間置酒高歌呢！", npc.portrait); }
+            else if (npc.id === 'n2') { startDialogue(npc.name, "兄台請看下方！從千人石一路望向山門，人群櫛比如鱗。這般人間煙火，正如『雁落平沙，霞鋪江上』，真是無得而狀！", npc.portrait); }
+            else if (npc.id === 'n3') { startDialogue(npc.name, "今夜的月亮真圓啊。凡是月之夜、花之晨、雪之夕，虎丘的遊人總是紛錯如織，但不得不說，還是『中秋為尤勝』！", npc.portrait); }
+            else if (npc.id === 's1') { startDialogue(npc.name, ["來來來！大家一起唱！這叫『布席之初，唱者千百』！", "雖然官府老爺覺得我們『聲若聚蚊，不可辨識』，嫌我們俗氣，但這才是我們老百姓最真實的聲音！我們不講究格套，只圖個暢快！", "公子，你要不要也來感受一下這份俗世的熱鬧？"], npc.portrait, () => startRhythmGame(npc.stage)); }
+            else if (npc.id === 's2') {
+              if (npc.stage > state.quests.musicStage + 1) return startDialogue("系統提示", "你需要先聆聽千人石下方的『聚蚊之聲』，感受過極俗，才能體會競技之趣。", null);
+              startDialogue(npc.name, ["那群像蚊子一樣亂叫的唱完了，現在輪到我們『分曹部署，竟以歌喉相鬥』！", "我們在這裡，雅俗既陳，妍媸自別。能讓我們『搖手頓足』叫好的，也不過幾十人罷了。", "客官，敢不敢來跟我們鬥一鬥歌喉？展現一下你的性情？"], npc.portrait, () => startRhythmGame(npc.stage));
+            }
+            else if (npc.id === 's3') {
+              if (npc.stage > state.quests.musicStage + 1) return startDialogue("系統提示", "你尚未體會過『分曹部署』的熱鬧，無法靜下心來聆聽這竹肉相發之音。", null);
+              startDialogue(npc.name, ["喧鬧褪去... 你看這明月浮空，石光如練。一切像『瓦釜』般粗俗的聲音，終於寂然停聲了。", "現在能跟著唱和的，才不過三四人。", "且聽我這一簫，一寸管，配合著緩板而歌。這『竹肉相發，清聲亮徹』，只唱給真正懂雅樂的人聽。準備好了嗎？"], npc.portrait, () => startRhythmGame(npc.stage));
+            }
+            else if (npc.id === 's4') {
+              if (npc.stage > state.quests.musicStage + 1) return startDialogue("系統提示", "這是一夫的絕世天籟。在未經歷前三階段的洗禮，與協助江進之完成重建前，你無法參透這歌聲。", null);
+              if (state.quests.reconstruct < 2) return startDialogue("系統提示", "（需要先協助江進之完成『興復平遠堂』的任務，讓心境徹底澄明，才能聆聽此曲）", null);
+              startDialogue(npc.name, ["夜已深沉... 月影橫斜，荇藻凌亂。這時候，連簫板等樂器都不再需要了。", "我的歌聲不為諂媚權貴，不為博取功名，只為抒發胸中那一股渾然天成的『性靈』。", "四座屏息吧。且聽我這一夫登場，每度一字，幾盡一刻。", "讓這音若細發之聲，響徹雲際！"], npc.portrait, () => startRhythmGame(npc.stage));
+            }
+            return;
+          }
+        }
+      }
+
+      // 🎶 節奏聽曲小遊戲
+      let rhythmInterval; let rhythmNotes = []; let rhythmTick = 0; let currentStage = 1;
+      function startRhythmGame(stage) {
+        state.rhythmActive = true; currentStage = stage; state.rhythmScore = 0; state.rhythmCombo = 0; rhythmNotes = []; rhythmTick = 0;
+        document.getElementById('rhythm-overlay').classList.remove('hidden'); document.getElementById('rhythm-overlay').classList.add('flex');
+        let titles = ["", "聚蚊之聲 (千百合唱)", "分曹部署 (歌喉鬥唱)", "竹肉相發 (簫管合奏)", "一夫登場 (響徹雲際)"];
+        document.getElementById('rhythm-title').innerText = titles[stage]; 
+        document.getElementById('rhythm-score').innerText = '0'; document.getElementById('rhythm-combo').innerText = '0';
+        rhythmInterval = setInterval(updateRhythm, 1000/60);
+      }
+
+      function updateRhythm() {
+        rhythmTick++; let spawnRate = 80 - (currentStage * 10); if (currentStage === 4) spawnRate = 100; 
+        if (rhythmTick % spawnRate === 0 && rhythmTick < 1000) { 
+          const dirs = ['left', 'up', 'down', 'right']; const dir = dirs[Math.floor(Math.random()*dirs.length)]; const symbols = { 'left': '◀', 'up': '▲', 'down': '▼', 'right': '▶' };
+          let el = document.createElement('div'); el.className = `rhythm-note text-white bg-slate-800 border-slate-500`;
+          if(dir==='left') el.classList.add('text-blue-400', 'border-blue-400'); if(dir==='up') el.classList.add('text-green-400', 'border-green-400'); if(dir==='down') el.classList.add('text-yellow-400', 'border-yellow-400'); if(dir==='right') el.classList.add('text-red-400', 'border-red-400');
+          el.innerText = symbols[dir]; el.style.left = '100%'; document.getElementById('rhythm-notes-container').appendChild(el);
+          rhythmNotes.push({ el, dir, pos: 100, active: true });
+        }
+        let speed = 0.3 + (currentStage * 0.1); if (currentStage === 4) speed = 0.25; 
+        for (let i = rhythmNotes.length - 1; i >= 0; i--) {
+          let note = rhythmNotes[i]; if (!note.active) continue;
+          note.pos -= speed; note.el.style.left = note.pos + '%';
+          if (note.pos < 5) { note.active = false; note.el.remove(); state.rhythmCombo = 0; playTone(0, 0.2, 'sawtooth'); document.getElementById('rhythm-combo').innerText = state.rhythmCombo; }
+        }
+        if (state.rhythmScore >= 60) { endRhythmGame(true); } else if (rhythmTick > 1400 && rhythmNotes.every(n => !n.active)) { endRhythmGame(false); }
+      }
+
+      function rhythmHit(inputDir) {
+        let hit = false;
+        for (let note of rhythmNotes) {
+          if (note.active && note.dir === inputDir) {
+            if (note.pos > 8 && note.pos < 22) {
+              hit = true; note.active = false; note.el.style.transform = 'scale(1.5)'; note.el.style.opacity = '0'; setTimeout(() => note.el.remove(), 200);
+              state.rhythmCombo++; state.rhythmScore += 10 + (state.rhythmCombo > 5 ? 5 : 0); playTone(currentStage+2, 0.3, 'triangle'); 
+              document.getElementById('rhythm-score').innerText = state.rhythmScore; document.getElementById('rhythm-combo').innerText = state.rhythmCombo;
+              break;
+            }
+          }
+        }
+        if (!hit) { state.rhythmCombo = 0; document.getElementById('rhythm-combo').innerText = state.rhythmCombo; }
+      }
+
+      function endRhythmGame(win) {
+        clearInterval(rhythmInterval); state.rhythmActive = false;
+        document.getElementById('rhythm-overlay').classList.add('hidden'); document.getElementById('rhythm-overlay').classList.remove('flex');
+        document.getElementById('rhythm-notes-container').innerHTML = '';
+
+        if (win) {
+          if (currentStage > state.quests.musicStage) {
+            state.quests.musicStage = currentStage;
+            document.getElementById('ui-q1').innerText = `進度: ${currentStage} / 4 階段`; document.getElementById('ui-q1').className = 'text-green-400 font-bold ml-2';
+          }
+          if (currentStage === 4 && state.quests.reconstruct === 2) {
+            state.gameFinished = true;
+            startDialogue("袁宏道 (內心)", [
+              "（歌者一夫的聲音，音若細發，彷彿響徹雲際... 我看到連夜空的飛鳥都為之徘徊，身旁的壯士也感動得落下淚來。）",
+              "這就是虎丘的天籟... 只有脫下官服，褪去俗氣，才能真正走入這片山林，聽見這樣真實的聲音。",
+              "這兩年來，我受夠了官場的虛與委蛇，受夠了這『烏紗之橫，皁隸之俗』！每當我以官員的身分前來，這些美好的事物便因敬畏而避匿。",
+              "今夜，我終於領悟了『獨抒性靈』的真諦。"
+            ], "portrait_yuan", () => {
+               const endingScreen = document.getElementById('grand-ending-screen');
+               endingScreen.classList.remove('hidden'); endingScreen.classList.add('flex');
+               setTimeout(() => { endingScreen.classList.remove('opacity-0'); }, 100);
+            });
+          } else { startDialogue("系統提示", "演奏絕妙！你深刻體會了這一段落的意境，這聲音彷彿刻在了你的靈魂裡。", null); }
+        } else { startDialogue("系統提示", "這首曲子似乎還缺點火候，不過沒關係，虎丘的夜還很長，稍作休息再挑戰一次吧！", null); }
+      }
+
+      document.querySelectorAll('.rhythm-btn').forEach(btn => { btn.addEventListener('click', () => { rhythmHit(btn.dataset.key); }); });
+      document.getElementById('btn-quit-rhythm').addEventListener('click', () => endRhythmGame(false));
+
+      // 🖌️ 渲染與物理引擎
+      function update() {
+        if (!state.isRunning || state.rhythmActive || state.gameFinished) return;
+        if (!document.getElementById('dialogue-overlay').classList.contains('hidden')) return; 
+
+        const p = state.player; let dx = 0, dy = 0;
+        if (keys.w) dy = -1; if (keys.s) dy = 1; if (keys.a) dx = -1; if (keys.d) dx = 1;
+        if (dx !== 0 && dy !== 0) { dx *= 0.7; dy *= 0.7; }
+        p.x += dx * p.speed; p.y += dy * p.speed;
+        p.x = Math.max(p.radius, Math.min(MAP_WIDTH - p.radius, p.x)); p.y = Math.max(p.radius, Math.min(MAP_HEIGHT - p.radius, p.y));
+
+        camera.x = p.x - camera.width / 2; camera.y = p.y - camera.height / 2;
+        camera.x = Math.max(0, Math.min(MAP_WIDTH - camera.width, camera.x)); camera.y = Math.max(0, Math.min(MAP_HEIGHT - camera.height, camera.y));
+
+        let nearGuard = false;
+        state.guards.forEach(g => {
+          g.x += g.speed * g.dir; if (g.x > g.maxX) { g.x = g.maxX; g.dir = -1; } if (g.x < g.minX) { g.x = g.minX; g.dir = 1; }
+          if (Math.hypot(p.x - g.x, p.y - g.y) < 120) nearGuard = true;
+        });
+
+        if (p.dress === 'official') state.suspicion += 0.1; 
+        if (nearGuard) state.suspicion += (p.dress === 'official' ? 0.4 : 0.15); else if (p.dress === 'plain') state.suspicion -= 0.8; 
+        state.suspicion = Math.max(0, Math.min(100, state.suspicion));
+
+        const susBar = document.getElementById('ui-suspicion-bar'); const susText = document.getElementById('ui-suspicion-text');
+        susBar.style.width = state.suspicion + '%'; susText.innerText = Math.floor(state.suspicion) + '%';
+        if (state.suspicion > 80) { susBar.className = 'h-full bg-red-600 transition-all duration-300 animate-pulse'; susText.className = 'text-red-500 font-bold animate-pulse'; }
+        else { susBar.className = 'h-full bg-amber-500 transition-all duration-300'; susText.className = 'text-red-300'; }
+
+        if (state.suspicion >= 100) {
+          state.suspicion = 0;
+          startDialogue("皂役", "知縣老爺！您怎麼一個人在這？這裡人多嘴雜，快，小的們護送您回山門去！", "portrait_guard", () => {
+            p.x = MAP_WIDTH / 2; p.y = MAP_HEIGHT - 100; spawnParticles(p.x, p.y, '#ffffff'); playTone(1, 0.5, 'sawtooth');
+          });
+        }
+        document.getElementById('ui-location').innerText = getZone(p.y).name;
+        for (let i = state.particles.length - 1; i >= 0; i--) { let pt = state.particles[i]; pt.x += pt.vx; pt.y += pt.vy; pt.life -= 0.05; if (pt.life <= 0) state.particles.splice(i, 1); }
+      }
+
+      function draw() {
+        if (!state.isRunning) return;
+        ctx.fillStyle = '#050505'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.save(); ctx.translate(-camera.x, -camera.y);
+
+        ZONES.forEach(z => {
+          if (!drawImageIfLoaded(ctx, z.id, 0, z.yMin, MAP_WIDTH, z.yMax - z.yMin)) {
+            let grad = ctx.createLinearGradient(0, z.yMin, 0, z.yMax); grad.addColorStop(0, z.color1); grad.addColorStop(1, z.color2);
+            ctx.fillStyle = grad; ctx.fillRect(0, z.yMin, MAP_WIDTH, z.yMax - z.yMin);
+            ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.font = 'bold 80px "Noto Serif TC"'; ctx.fillText(z.name, MAP_WIDTH/2 - 150, z.yMin + 150);
+          }
+        });
+
+        ctx.fillStyle = 'rgba(203, 213, 225, 0.2)'; ctx.beginPath(); ctx.ellipse(MAP_WIDTH/2, 150, 300, 80, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#020617'; ctx.fillRect(100, 500, MAP_WIDTH-200, 100); ctx.fillStyle = 'rgba(56, 189, 248, 0.2)'; ctx.fillRect(100, 520, MAP_WIDTH-200, 60); 
+        ctx.fillStyle = '#94a3b8'; ctx.font='20px sans-serif'; ctx.fillText("劍泉 深不可測", MAP_WIDTH/2-60, 550);
+        
+        if (state.quests.reconstruct < 2) {
+          ctx.strokeStyle = '#7f1d1d'; ctx.lineWidth=2; ctx.strokeRect(MAP_WIDTH/2-100, 700, 200, 100); ctx.fillStyle = '#fca5a5'; ctx.font='16px sans-serif'; ctx.fillText("平遠堂舊址 (荒廢)", MAP_WIDTH/2-70, 750);
+        } else {
+          ctx.fillStyle = '#b45309'; ctx.fillRect(MAP_WIDTH/2-110, 680, 220, 120); ctx.fillStyle = '#fbbf24'; ctx.font='bold 24px "Noto Serif TC"'; ctx.fillText("🏮 平遠堂 🏮", MAP_WIDTH/2-70, 740);
+        }
+        ctx.fillStyle = 'rgba(100, 116, 139, 0.3)'; ctx.fillRect(150, 950, MAP_WIDTH-300, 300);
+
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        state.scenery.forEach(s => { 
+          if (s.type === 'tree' && drawImageIfLoaded(ctx, 'obj_tree', s.x - s.size, s.y - s.size, s.size*2, s.size*2)) return;
+          if (s.type === 'lantern' && drawImageIfLoaded(ctx, 'obj_lantern', s.x - s.size, s.y - s.size, s.size*2, s.size*2)) return;
+          ctx.font = `${s.size}px sans-serif`; ctx.fillText(s.emoji, s.x, s.y); 
+        });
+
+        if (state.quests.reconstruct === 1) {
+          state.items.forEach(item => { 
+            if (!item.collected) { 
+              ctx.beginPath(); ctx.arc(item.x, item.y, 15 + Math.sin(Date.now()/200)*5, 0, Math.PI*2); ctx.fillStyle = 'rgba(251, 191, 36, 0.3)'; ctx.fill(); 
+              if (!drawImageIfLoaded(ctx, item.id, item.x - 20, item.y - 20, 40, 40)) { ctx.font = '20px sans-serif'; ctx.fillText('✨', item.x, item.y); }
+              ctx.fillStyle = '#fef3c7'; ctx.font = '12px sans-serif'; ctx.fillText(item.name, item.x, item.y-25); 
+            } 
+          });
+        }
+
+        state.npcs.forEach(npc => {
+          if (npc.id.startsWith('s') && state.suspicion > 60) { ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '12px sans-serif'; ctx.fillText("💨 避匿", npc.x, npc.y); return; }
+          if (!drawImageIfLoaded(ctx, npc.sprite, npc.x - 16, npc.y - 16, 32, 32)) {
+            ctx.beginPath(); ctx.arc(npc.x, npc.y, 14, 0, Math.PI*2); ctx.fillStyle = npc.color; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+            ctx.fillStyle = '#fff'; ctx.font = '12px sans-serif'; ctx.fillText(npc.icon, npc.x, npc.y); 
+          }
+          ctx.fillStyle = '#e2e8f0'; ctx.font = '14px "Noto Serif TC"'; ctx.fillText(npc.name, npc.x, npc.y-25);
+        });
+        state.guards.forEach(g => {
+          ctx.beginPath(); ctx.arc(g.x, g.y, 120, 0, Math.PI*2); ctx.fillStyle = 'rgba(239, 68, 68, 0.05)'; ctx.fill();
+          if (!drawImageIfLoaded(ctx, 'sprite_guard', g.x - 16, g.y - 16, 32, 32)) {
+            ctx.beginPath(); ctx.arc(g.x, g.y, g.radius, 0, Math.PI*2); ctx.fillStyle = '#1e1b4b'; ctx.fill(); ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.stroke();
+            ctx.fillStyle = '#fca5a5'; ctx.font = '12px sans-serif'; ctx.fillText("皁", g.x, g.y); 
+          }
+          ctx.fillStyle = '#fca5a5'; ctx.font = '12px sans-serif'; ctx.fillText("巡邏官差", g.x, g.y-22);
+        });
+
+        const p = state.player; 
+        if (!drawImageIfLoaded(ctx, 'sprite_yuan', p.x - 16, p.y - 16, 32, 32)) {
+          ctx.beginPath(); ctx.arc(p.x, p.y, p.radius, 0, Math.PI*2); ctx.fillStyle = p.color; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.stroke();
+          if (p.dress === 'official') { ctx.fillStyle = '#000'; ctx.fillRect(p.x-25, p.y-5, 50, 4); } else { ctx.fillStyle = '#93c5fd'; ctx.fillRect(p.x-10, p.y-12, 20, 4); }
+        }
+
+        let showPrompt = false;
+        if (state.quests.reconstruct === 1) state.items.forEach(i => { if (!i.collected && Math.hypot(p.x-i.x, p.y-i.y)<40) showPrompt=true; });
+        state.npcs.forEach(n => { if (Math.hypot(p.x-n.x, p.y-n.y)<50) showPrompt=true; });
+        if (showPrompt && !state.rhythmActive && !state.gameFinished) { ctx.fillStyle = '#fef08a'; ctx.font = 'bold 14px sans-serif'; ctx.fillText("[空白鍵 互動]", p.x, p.y - 35); }
+
+        state.particles.forEach(pt => { ctx.globalAlpha = pt.life; ctx.fillStyle = pt.color; ctx.beginPath(); ctx.arc(pt.x, pt.y, 3, 0, Math.PI*2); ctx.fill(); ctx.globalAlpha = 1.0; });
+        ctx.restore();
+      }
+
+      function gameLoop() { update(); draw(); requestAnimationFrame(gameLoop); }
+
+      // 🎬 啟動按鈕
+      document.getElementById('btn-start-game').addEventListener('click', () => {
+        initAudio(); document.getElementById('start-screen').style.opacity = 0;
+        
+        const overlay = document.getElementById('dialogue-overlay');
+        if (IMAGE_URLS.dialogue_bg) {
+            overlay.style.backgroundImage = `url('${IMAGE_URLS.dialogue_bg}')`;
+            overlay.style.backgroundSize = 'cover'; overlay.style.backgroundPosition = 'center';
+            overlay.classList.add('shadow-[inset_0_0_80px_rgba(0,0,0,0.85)]');
+        }
+
+        setTimeout(() => {
+          document.getElementById('start-screen').classList.add('hidden'); document.getElementById('game-ui').classList.remove('hidden');
+          state.isRunning = true; initWorld(); gameLoop();
+          setTimeout(() => {
+            startDialogue("袁宏道", [
+              "這就是中秋夜的虎丘！你看那些遠處的遊人，簡直『如雁落平沙，霞鋪江上』。",
+              "我現在這身官服實在太惹眼了，若是穿著（按 X 鍵切換），周圍的衙役就會靠過來。",
+              "我必須化作素衣儒生，先去拜訪千人石下的遊人與歌者，再去與老友江進之會合！",
+              "（點擊對話框或按空白鍵即可結束對話，開始探索）"
+            ], "portrait_yuan");
+          }, 500);
+        }, 1000);
+      });
+
+      document.getElementById('btn-manual').addEventListener('click', () => { document.getElementById('manual-modal').classList.remove('hidden'); document.getElementById('manual-modal').classList.add('flex'); });
+      document.getElementById('btn-close-manual').addEventListener('click', () => { document.getElementById('manual-modal').classList.add('hidden'); document.getElementById('manual-modal').classList.remove('flex'); });
+      document.getElementById('btn-restart-game').addEventListener('click', () => { location.reload(); });
+    });
+  </script>
+</body>
+</html>
